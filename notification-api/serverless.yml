@@ -1,0 +1,44 @@
+service:
+  name: kvo-notification-service
+
+plugins:
+  - serverless-bundle
+  - serverless-pseudo-parameters
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: ap-southeast-2
+  memorySize: 256
+  stage: ${opt:stage, 'sit'}
+  iamRoleStatements:
+    - ${file(iam/SendMailIAM.yml):SendMailIAM}
+
+resources:
+  Resources: #define AWS resources, in this case is AWS SQS
+    MailQueue: ${file(resources/MailQueue.yml):MailQueue} 
+  Outputs:
+    MailQueueArn: ${file(resources/MailQueue.yml):Outputs.MailQueueArn} 
+    MailQueueUrl: ${file(resources/MailQueue.yml):Outputs.MailQueueUrl}
+
+functions:
+  healthcheck:
+    handler: notification/healthcheck.handler
+    events:
+      - http:
+          method: GET
+          path: /healthcheck
+  sendMail:
+    handler: notification/sendMail.handler
+    events:
+      - sqs:
+          arn: ${self:custom.mailQueue.arn}
+          batchSize: 1 #process 1 message at a time. Default 10, meaning lambda can process 10 messages at a time
+
+custom:
+  mailQueue:
+    name: MailQueue-${self:provider.stage}
+    arn: !GetAtt MailQueue.Arn #Need to use GetAtt to return arn
+    url: !Ref MailQueue #Need to use Ref to return url
+  bundle:
+    linting: false
